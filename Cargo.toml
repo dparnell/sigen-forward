@@ -1,0 +1,14 @@
+[package]
+name = "sigen-forward"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+env_logger = "0.11"
+log = "0.4"
+regex = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+rumqttc = "0.24"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
