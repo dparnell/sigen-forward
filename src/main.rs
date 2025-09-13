@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use log::{error, info, warn};
+use env_logger::{Builder, Env};
+use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
@@ -67,7 +68,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    init_logger();
     let cli = Cli::parse();
 
     let topic_re = Regex::new(&cli.topic_regex)
@@ -118,11 +119,10 @@ async fn main() -> Result<()> {
                             if let Err(e) = forward_to_influx(&http, &cli.influx_url, cli.influx_token.as_deref(), line.as_bytes(), cli.http_retries, cli.http_retry_backoff_ms).await {
                                 error!("Failed to forward message from topic '{}': {:#}", topic, e);
                             } else {
-                                info!("Forwarded message from topic '{}' to InfluxDB", topic);
+                                debug!("Forwarded message from topic '{}' to InfluxDB", topic);
                             }
                         } else {
-                            // Uncomment for verbose debugging
-                            // debug!("Topic '{}' did not match regex", topic);
+                            trace!("Topic '{}' did not match regex", topic);
                         }
                     }
                     Ok(Event::Outgoing(_)) => {
@@ -142,9 +142,12 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Try to disconnect cleanly
-    let _ = mqtt.disconnect().await;
     Ok(())
+}
+
+fn init_logger() {
+    let env = Env::default().filter_or("SIGEN_FORWARD_LOG", "info");
+    Builder::from_env(env).init();
 }
 
 fn connect_mqtt(cli: &Cli) -> Result<(AsyncClient, EventLoop)> {
@@ -268,9 +271,9 @@ fn format_field_value(payload: &[u8]) -> String {
         if let Ok(f) = s_trim.parse::<f64>() {
             return format!("{}", f);
         }
-        return escape_string_value(s_trim);
+        escape_string_value(s_trim)
     } else {
         let lossy = String::from_utf8_lossy(payload);
-        return escape_string_value(lossy.trim());
+        escape_string_value(lossy.trim())
     }
 }
