@@ -118,6 +118,8 @@ async fn main() -> Result<()> {
 
                             if let Err(e) = forward_to_influx(&http, &cli.influx_url, cli.influx_token.as_deref(), line.as_bytes(), cli.http_retries, cli.http_retry_backoff_ms).await {
                                 error!("Failed to forward message from topic '{}': {:#}", topic, e);
+                                // Treat InfluxDB connectivity loss as fatal per requirement
+                                return Err(e);
                             } else {
                                 debug!("Forwarded message from topic '{}' to InfluxDB", topic);
                             }
@@ -134,8 +136,8 @@ async fn main() -> Result<()> {
                         let _ = other; // silence
                     }
                     Err(e) => {
-                        warn!("MQTT event loop error: {}. Will retry after short delay.", e);
-                        sleep(Duration::from_millis(500)).await;
+                        error!("MQTT event loop error: {}. Exiting due to lost connectivity.", e);
+                        return Err(e.into());
                     }
                 }
             }
