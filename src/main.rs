@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -113,9 +114,10 @@ async fn main() -> Result<()> {
                             let measurement = if measurement_raw.is_empty() { "mqtt" } else { measurement_raw };
 
                             // Build InfluxDB line protocol: <measurement> value=<parsed_payload>
-                            let field_value = format_field_value(&payload);
+                            let field_value = format_field_value(measurement, &payload);
                             let line = format!("{} value={}\n", escape_measurement(measurement), field_value);
 
+                            // println!("Forwarding message to InfluxDB: {}", line);
                             if let Err(e) = forward_to_influx(&http, &cli.influx_url, cli.influx_token.as_deref(), line.as_bytes(), cli.http_retries, cli.http_retry_backoff_ms).await {
                                 error!("Failed to forward message from topic '{}': {:#}", topic, e);
                                 // Treat InfluxDB connectivity loss as fatal per requirement
@@ -258,7 +260,48 @@ fn escape_string_value(s: &str) -> String {
     out
 }
 
-fn format_field_value(payload: &[u8]) -> String {
+enum ValueFormat {
+    Int(i64),
+    Float(f64),
+}
+
+impl Display for ValueFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueFormat::Int(v) => write!(f, "{}i", v),
+            ValueFormat::Float(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+
+impl ValueFormat {
+    fn as_int(&self) -> String {
+        match self {
+            ValueFormat::Int(v) => format!("{}i", v),
+            ValueFormat::Float(v) => format!("{}i", v.round() as i64),
+        }
+    }
+
+    fn as_float(&self) -> String {
+        match self {
+            ValueFormat::Int(v) => format!("{}.0", v),
+            ValueFormat::Float(v) => format!("{}", v),
+        }
+    }
+}
+
+fn format_measurement_value(measurement: &str, value: ValueFormat) -> String {
+    if measurement.ends_with("_plant_pv_power") {
+        value.as_int()
+    } else if measurement.ends_with("_consumed_power") {
+        value.as_float()
+    } else {
+        format!("{}", value)
+    }
+}
+
+fn format_field_value(measurement: &str, payload: &[u8]) -> String {
     if let Ok(s) = std::str::from_utf8(payload) {
         let s_trim = s.trim();
         if s_trim.eq_ignore_ascii_case("true") {
@@ -268,10 +311,10 @@ fn format_field_value(payload: &[u8]) -> String {
             return "false".to_string();
         }
         if let Ok(n) = s_trim.parse::<i64>() {
-            return format!("{}", n);
+            return format_measurement_value(measurement, ValueFormat::Int(n));
         }
         if let Ok(f) = s_trim.parse::<f64>() {
-            return format!("{}", f);
+            return format_measurement_value(measurement, ValueFormat::Float(f));
         }
         escape_string_value(s_trim)
     } else {
