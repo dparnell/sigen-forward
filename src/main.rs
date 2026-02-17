@@ -268,7 +268,7 @@ fn format_field_value(payload: &[u8]) -> String {
             return "false".to_string();
         }
         if let Ok(n) = s_trim.parse::<i64>() {
-            return format!("{}i", n);
+            return format!("{}", n);
         }
         if let Ok(f) = s_trim.parse::<f64>() {
             return format!("{}", f);
